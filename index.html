@@ -111,12 +111,16 @@
 
       <div class="encart">
         <h3>Partie</h3>
-        <p class="aide">La partie se sauvegarde toute seule à chaque fin de journée.</p>
+        <p class="aide">En ligne, la partie se sauvegarde toute seule à chaque fin de journée. Tu peux aussi télécharger un fichier de sauvegarde pour la garder ou la transférer.</p>
         <div class="formulaire">
           <button id="btn-sauvegarder" class="bouton-secondaire">💾 Sauvegarder</button>
           <button id="btn-charger" class="bouton-secondaire">📂 Charger</button>
+          <button id="btn-telecharger" class="bouton-secondaire">⬇️ Télécharger la partie</button>
+          <button id="btn-importer" class="bouton-secondaire">⬆️ Importer un fichier</button>
           <button id="btn-nouvelle" class="bouton-secondaire bouton-danger">🔄 Nouvelle partie</button>
         </div>
+        <!-- Champ caché qui ouvre l'explorateur de fichiers pour l'import -->
+        <input type="file" id="input-fichier-save" accept=".json,application/json" style="display:none" />
       </div>
     </section>
 

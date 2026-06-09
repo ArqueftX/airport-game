@@ -1,0 +1,43 @@
+# Publie automatiquement le jeu sur GitHub Pages (un site web gratuit).
+# À chaque envoi de code sur la branche, le site est mis à jour tout seul.
+name: Déployer sur GitHub Pages
+
+on:
+  push:
+    branches: ["claude/nifty-cannon-y18i8e"]
+  workflow_dispatch:        # permet aussi de lancer le déploiement à la main
+
+# Droits nécessaires pour publier les pages.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# On évite deux déploiements en même temps.
+concurrency:
+  group: "pages"
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Récupérer le code
+        uses: actions/checkout@v4
+
+      - name: Configurer (et activer) GitHub Pages
+        uses: actions/configure-pages@v5
+        with:
+          enablement: true
+
+      - name: Préparer les fichiers du site
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: "."          # tout le dossier (index.html est à la racine)
+
+      - name: Déployer
+        id: deployment
+        uses: actions/deploy-pages@v4

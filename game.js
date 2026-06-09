@@ -387,7 +387,7 @@ function sauvegarder() {
     localStorage.setItem(CLE_SAUVEGARDE, JSON.stringify(etat));
     noter("Partie sauvegardée.", "bon");
   } catch (e) {
-    alert("Impossible de sauvegarder (stockage du navigateur indisponible).");
+    alert("Le stockage du navigateur est bloqué ici (souvent le cas en ouvrant le fichier sans serveur).\n\nUtilise plutôt « ⬇️ Télécharger la partie », ou joue depuis l'adresse web du jeu.");
   }
   toutAfficher();
 }
@@ -399,6 +399,37 @@ function charger() {
   etat = JSON.parse(donnees);
   noter("Partie chargée.");
   toutAfficher();
+}
+
+/* Télécharger la partie sous forme de fichier .json sur l'ordinateur.
+   Cette méthode marche PARTOUT, même quand le stockage du navigateur est
+   bloqué (par exemple en ouvrant le fichier directement, sans serveur). */
+function telechargerPartie() {
+  const texte = JSON.stringify(etat, null, 2);
+  const blob = new Blob([texte], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const lien = document.createElement("a");
+  lien.href = url;
+  lien.download = "aerotycoon-jour" + etat.jour + ".json";
+  lien.click();
+  URL.revokeObjectURL(url);
+  noter("Partie téléchargée dans un fichier.", "bon");
+  toutAfficher();
+}
+
+/* Importer une partie depuis un fichier .json choisi par le joueur. */
+function importerPartie(fichier) {
+  const lecteur = new FileReader();
+  lecteur.onload = () => {
+    try {
+      etat = JSON.parse(lecteur.result);
+      noter("Partie importée depuis un fichier.");
+      toutAfficher();
+    } catch (e) {
+      alert("Ce fichier n'est pas une sauvegarde valide.");
+    }
+  };
+  lecteur.readAsText(fichier);
 }
 
 function nouvellePartie() {
@@ -815,7 +846,15 @@ $("btn-emprunter").addEventListener("click", () => emprunter($("input-montant-ba
 $("btn-rembourser").addEventListener("click", () => rembourser($("input-montant-banque").value));
 $("btn-sauvegarder").addEventListener("click", sauvegarder);
 $("btn-charger").addEventListener("click", charger);
+$("btn-telecharger").addEventListener("click", telechargerPartie);
 $("btn-nouvelle").addEventListener("click", nouvellePartie);
+
+/* L'import passe par un champ "fichier" caché : on clique dessus, puis on
+   réagit quand l'utilisateur a choisi un fichier. */
+$("btn-importer").addEventListener("click", () => $("input-fichier-save").click());
+$("input-fichier-save").addEventListener("change", (e) => {
+  if (e.target.files.length > 0) importerPartie(e.target.files[0]);
+});
 
 /* On prépare les listes de villes puis on dessine tout une première fois. */
 remplirSelectsVilles();
