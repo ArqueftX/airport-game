@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<!--
+  ✈️  AÉRO TYCOON — Jeu de gestion d'aéroport
+  ----------------------------------------------------
+  Ce fichier est la STRUCTURE de la page (le squelette).
+  - Le style (couleurs, mise en page) est dans  style.css
+  - Le cerveau du jeu (les règles) est dans      game.js
+  Tu n'as RIEN à installer : double-clique sur ce fichier.
+-->
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>✈️ Aéro Tycoon</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <!-- ======================= BARRE DU HAUT ======================= -->
+  <!-- Elle affiche en permanence : le jour, l'argent, la réputation -->
+  <header id="barre-haut">
+    <div class="logo">✈️ Aéro Tycoon</div>
+    <div class="indicateurs">
+      <div class="indic">📅 Jour <span id="aff-jour">1</span></div>
+      <div class="indic">💶 <span id="aff-argent">0</span></div>
+      <div class="indic">⭐ Réputation <span id="aff-reputation">0</span>/100</div>
+    </div>
+    <button id="btn-jour" class="bouton-principal">▶ Passer au jour suivant</button>
+  </header>
+
+  <!-- ======================= MENU À ONGLETS ======================= -->
+  <!-- Chaque bouton affiche une "page" différente du jeu -->
+  <nav id="onglets">
+    <button class="onglet actif" data-cible="page-tableau">📊 Tableau de bord</button>
+    <button class="onglet" data-cible="page-lignes">🗺️ Lignes</button>
+    <button class="onglet" data-cible="page-flotte">🛩️ Flotte</button>
+    <button class="onglet" data-cible="page-marche">🏪 Marché des avions</button>
+    <button class="onglet" data-cible="page-journal">📜 Journal</button>
+  </nav>
+
+  <!-- ======================= LES PAGES ======================= -->
+  <main id="contenu">
+
+    <!-- Page 1 : vue d'ensemble -->
+    <section id="page-tableau" class="page active">
+      <h2>📊 Tableau de bord</h2>
+      <div id="resume-cartes" class="grille-cartes"></div>
+      <h3>Résultat de la dernière journée</h3>
+      <div id="resume-journee" class="encart">La compagnie vient d'ouvrir. Crée ta première ligne !</div>
+    </section>
+
+    <!-- Page 2 : créer et gérer les lignes aériennes -->
+    <section id="page-lignes" class="page">
+      <h2>🗺️ Lignes aériennes</h2>
+      <div class="encart">
+        <h3>Ouvrir une nouvelle ligne</h3>
+        <div class="formulaire">
+          <label>Ville de départ
+            <select id="select-ville-a"></select>
+          </label>
+          <label>Ville d'arrivée
+            <select id="select-ville-b"></select>
+          </label>
+          <label>Prix du billet (€)
+            <input type="number" id="input-prix" value="120" min="10" />
+          </label>
+          <button id="btn-creer-ligne" class="bouton-principal">Ouvrir la ligne</button>
+        </div>
+        <p id="info-ligne" class="aide"></p>
+      </div>
+      <h3>Tes lignes</h3>
+      <div id="liste-lignes"></div>
+    </section>
+
+    <!-- Page 3 : les avions que tu possèdes -->
+    <section id="page-flotte" class="page">
+      <h2>🛩️ Ta flotte</h2>
+      <div id="liste-flotte"></div>
+    </section>
+
+    <!-- Page 4 : acheter des avions -->
+    <section id="page-marche" class="page">
+      <h2>🏪 Marché des avions</h2>
+      <p class="aide">Achète des avions, puis assigne-les à une ligne dans l'onglet « Lignes ».</p>
+      <div id="liste-marche" class="grille-cartes"></div>
+    </section>
+
+    <!-- Page 5 : l'historique des événements -->
+    <section id="page-journal" class="page">
+      <h2>📜 Journal de bord</h2>
+      <div id="liste-journal"></div>
+    </section>
+
+  </main>
+
+  <!-- On charge le cerveau du jeu EN DERNIER, une fois la page prête -->
+  <script src="game.js"></script>
+</body>
+</html>
