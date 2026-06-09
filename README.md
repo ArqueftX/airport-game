@@ -26,6 +26,19 @@ trésorerie positive et ta réputation haute.
 
 ## Feuille de route
 
-- **Partie 1 (actuelle)** : argent, avions, lignes, simulation jour par jour, usure, réputation.
-- **Partie 2** : demandes des usagers, événements aléatoires (météo, pannes, grèves), réparation des avions.
-- **Partie 3** : concurrence, prêts bancaires, agrandissement de l'aéroport, sauvegarde de la partie.
+- **Partie 1** : argent, avions, lignes, simulation jour par jour, usure, réputation.
+- **Partie 2 (actuelle)** : économie approfondie — prêts bancaires et intérêts, agrandissement
+  de l'aéroport (portes = avions simultanés), personnel (pilotes, mécaniciens, agents au sol),
+  réparation des avions, sauvegarde/chargement de la partie. Correction de l'élasticité des prix
+  (un billet trop cher fait fuir tous les voyageurs).
+- **Partie 3 (à venir)** : demandes/contrats des usagers, événements aléatoires (météo, pannes,
+  grèves), concurrence.
+
+## Mémo des règles économiques (Partie 2)
+
+- **Pilotes** : il faut 4 pilotes par avion en service. Pas assez = avions cloués au sol.
+- **Portes de l'aéroport** : limitent le nombre d'avions volant en même temps. Agrandir = plus de portes.
+- **Mécaniciens** : réduisent l'usure et les coûts d'entretien (jusqu'à −40 %).
+- **Agents au sol** : captent davantage de voyageurs (jusqu'à +30 %).
+- **Banque** : emprunter rapporte un capital immédiat mais coûte des intérêts chaque jour.
+- **Prix du billet** : au-delà d'environ 3,5× le prix conseillé, plus personne ne voyage.

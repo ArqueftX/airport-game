@@ -54,6 +54,32 @@ const MODELES = [
   { id: "gros",     nom: "SkyGiant 380", capacite: 380, rayon: 14000, vitesse: 900, conso: 13, maintenance: 7000, prix: 20000000 },
 ];
 
+/* ---- ÉCONOMIE : aéroport, personnel, banque ----------------------- */
+
+/* Les niveaux d'aéroport. "portes" = nombre maximum d'avions pouvant
+   opérer EN MÊME TEMPS. Pour faire voler plus d'avions, il faut agrandir.
+   "coutJournalier" = frais de fonctionnement fixes chaque jour. */
+const AEROPORT_NIVEAUX = [
+  { nom: "Aérodrome",             portes: 2,  coutJournalier: 2000,  prixAmelioration: 0 },
+  { nom: "Aéroport régional",     portes: 4,  coutJournalier: 5000,  prixAmelioration: 8000000 },
+  { nom: "Aéroport international", portes: 8,  coutJournalier: 12000, prixAmelioration: 25000000 },
+  { nom: "Hub mondial",           portes: 16, coutJournalier: 30000, prixAmelioration: 60000000 },
+];
+
+/* Salaires journaliers de chaque métier. */
+const SALAIRES = { pilote: 500, mecanicien: 400, agent: 250 };
+
+/* Il faut un équipage complet (pilotes + copilotes qui se relaient) par
+   avion en service. */
+const EQUIPAGE_PAR_AVION = 4;
+
+/* Banque : intérêt prélevé chaque jour sur la dette, et plafond d'emprunt. */
+const TAUX_INTERET_JOUR = 0.0005;   // 0,05 %/jour, soit ~20 %/an
+const DETTE_MAX = 80000000;
+
+/* Clé utilisée pour sauvegarder la partie dans le navigateur. */
+const CLE_SAUVEGARDE = "aeroTycoonSauvegarde";
+
 
 /* =====================================================================
    2. L'ÉTAT DU JEU
@@ -62,16 +88,25 @@ const MODELES = [
    partie. Si on voulait sauvegarder la partie, il suffirait de sauver
    cet objet. On y reviendra dans une prochaine partie.
    ===================================================================== */
-let etat = {
-  jour: 1,
-  argent: 8000000,        // 8 millions d'euros au départ
-  reputation: 50,         // sur 100 : la confiance des voyageurs
-  flotte: [],             // les avions qu'on possède
-  lignes: [],             // les lignes aériennes qu'on a ouvertes
-  journal: [],            // l'historique des événements
-  prochainIdAvion: 1,     // compteur pour donner un numéro unique à chaque avion
-  prochainIdLigne: 1,     // pareil pour les lignes
-};
+/* "etatInitial()" fabrique un état tout neuf. On en fait une fonction pour
+   pouvoir recommencer une partie (bouton « Nouvelle partie »). */
+function etatInitial() {
+  return {
+    jour: 1,
+    argent: 8000000,        // 8 millions d'euros au départ
+    reputation: 50,         // sur 100 : la confiance des voyageurs
+    dette: 0,               // ce qu'on doit à la banque
+    aeroport: { niveau: 1 },// on commence avec un simple aérodrome (2 portes)
+    personnel: { pilotes: 8, mecaniciens: 1, agents: 2 }, // de quoi faire voler 2 avions
+    flotte: [],             // les avions qu'on possède
+    lignes: [],             // les lignes aériennes qu'on a ouvertes
+    journal: [],            // l'historique des événements
+    prochainIdAvion: 1,     // compteur pour donner un numéro unique à chaque avion
+    prochainIdLigne: 1,     // pareil pour les lignes
+  };
+}
+
+let etat = etatInitial();
 
 
 /* =====================================================================
@@ -120,16 +155,24 @@ function demandePotentielle(ligne) {
   // Les très longues distances réduisent un peu la demande quotidienne.
   base = base * (1 - Math.min(dist, 12000) / 30000);
 
-  // Effet du prix : si on vend au prix conseillé -> facteur 1.
-  // Plus cher -> moins de clients ; moins cher -> davantage (mais plafonné).
+  // Effet du prix (l'« élasticité »). On compare le prix choisi au prix
+  // conseillé. ratio = 1 -> on est pile au prix conseillé.
   const ref = prixConseille(dist);
-  let facteurPrix = ref / ligne.prixBillet;        // ex : prix 2x trop cher -> 0.5
-  facteurPrix = Math.max(0.1, Math.min(facteurPrix, 1.8));
+  const ratio = ligne.prixBillet / ref;
+  //  - au prix conseillé (ratio 1)      -> facteur 1
+  //  - moins cher (ratio < 1)           -> bonus, plafonné à 1,6
+  //  - plus cher                        -> la demande CHUTE et atteint 0
+  //    vers 3,5× le prix conseillé : à 500 000 € le billet, plus personne !
+  let facteurPrix = 1 - (ratio - 1) / 2.5;
+  facteurPrix = Math.max(0, Math.min(facteurPrix, 1.6));
 
   // Effet réputation : 50 = neutre (facteur 1).
   const facteurRepu = 0.5 + etat.reputation / 100;
 
-  return Math.round(base * facteurPrix * facteurRepu);
+  // Effet du personnel au sol : un bon accueil capte un peu plus de monde.
+  const facteurService = facteurServiceSol();
+
+  return Math.round(base * facteurPrix * facteurRepu * facteurService);
 }
 
 /* Combien de rotations (aller-retour) un avion peut faire en une journée
@@ -144,6 +187,43 @@ function rotationsParJour(dist, vitesse) {
 /* Formate un nombre d'euros joliment : 1234567 -> "1 234 567 €" */
 function euros(n) {
   return Math.round(n).toLocaleString("fr-FR") + " €";
+}
+
+/* La fiche du niveau d'aéroport actuel. */
+function aeroportActuel() {
+  return AEROPORT_NIVEAUX[etat.aeroport.niveau - 1];
+}
+
+/* Nombre maximum d'avions pouvant opérer en même temps = le plus petit
+   entre le nombre de portes ET le nombre d'équipages disponibles.
+   C'est ce qui relie l'aéroport, le personnel et la flotte. */
+function capaciteOperationnelle() {
+  const portes = aeroportActuel().portes;
+  const equipages = Math.floor(etat.personnel.pilotes / EQUIPAGE_PAR_AVION);
+  return Math.min(portes, equipages);
+}
+
+/* Effet des agents au sol : un meilleur accueil capte un peu plus de
+   voyageurs (jusqu'à +30 %). */
+function facteurServiceSol() {
+  return Math.min(1.3, 1 + etat.personnel.agents * 0.02);
+}
+
+/* Effet des mécaniciens : ils ralentissent l'usure et allègent l'entretien
+   (jusqu'à -40 %). Renvoie un multiplicateur entre 0,6 et 1. */
+function facteurMecano() {
+  return Math.max(0.6, 1 - etat.personnel.mecaniciens * 0.04);
+}
+
+/* Coût fixe total prélevé chaque jour, quoi qu'il arrive : salaires,
+   fonctionnement de l'aéroport et intérêts de la dette. */
+function coutsFixesJournaliers() {
+  const salaires = etat.personnel.pilotes * SALAIRES.pilote
+                 + etat.personnel.mecaniciens * SALAIRES.mecanicien
+                 + etat.personnel.agents * SALAIRES.agent;
+  const aeroport = aeroportActuel().coutJournalier;
+  const interets = etat.dette * TAUX_INTERET_JOUR;
+  return { salaires, aeroport, interets, total: salaires + aeroport + interets };
 }
 
 
@@ -226,6 +306,108 @@ function assignerAvion(ligneId, avionId) {
   toutAfficher();
 }
 
+/* ---- BANQUE ---- */
+
+/* Emprunter de l'argent à la banque (augmente l'argent ET la dette). */
+function emprunter(montant) {
+  montant = Number(montant);
+  if (montant <= 0) return;
+  if (etat.dette + montant > DETTE_MAX) {
+    alert("La banque refuse : la dette dépasserait le plafond de " + euros(DETTE_MAX) + ".");
+    return;
+  }
+  etat.argent += montant;
+  etat.dette += montant;
+  noter("Emprunt de " + euros(montant) + " auprès de la banque.");
+  toutAfficher();
+}
+
+/* Rembourser une partie de la dette (diminue l'argent ET la dette). */
+function rembourser(montant) {
+  montant = Number(montant);
+  if (montant <= 0) return;
+  montant = Math.min(montant, etat.dette, etat.argent);  // pas plus que dû/possédé
+  if (montant <= 0) { alert("Rien à rembourser ou trésorerie insuffisante."); return; }
+  etat.argent -= montant;
+  etat.dette -= montant;
+  noter("Remboursement de " + euros(montant) + " à la banque.", "bon");
+  toutAfficher();
+}
+
+/* ---- AÉROPORT ---- */
+
+/* Agrandir l'aéroport au niveau suivant. */
+function ameliorerAeroport() {
+  const niveauSuivant = AEROPORT_NIVEAUX[etat.aeroport.niveau]; // niveau d'après
+  if (!niveauSuivant) { alert("Ton aéroport est déjà au niveau maximum !"); return; }
+  if (etat.argent < niveauSuivant.prixAmelioration) {
+    alert("Pas assez d'argent pour agrandir (" + euros(niveauSuivant.prixAmelioration) + ").");
+    return;
+  }
+  etat.argent -= niveauSuivant.prixAmelioration;
+  etat.aeroport.niveau++;
+  noter("Aéroport agrandi : « " + niveauSuivant.nom + " » (" + niveauSuivant.portes + " portes).", "bon");
+  toutAfficher();
+}
+
+/* ---- PERSONNEL ---- */
+
+/* Embaucher 1 employé d'un métier (le salaire sera prélevé chaque jour). */
+function embaucher(metier) {
+  etat.personnel[metier]++;
+  toutAfficher();
+}
+
+/* Licencier 1 employé d'un métier (on ne descend jamais sous 0). */
+function licencier(metier) {
+  if (etat.personnel[metier] > 0) etat.personnel[metier]--;
+  toutAfficher();
+}
+
+/* ---- RÉPARATION ---- */
+
+/* Réparer un avion : ramène son usure à 0 contre de l'argent.
+   Plus l'avion est usé, plus la réparation coûte cher. */
+function reparerAvion(avionId) {
+  const avion = etat.flotte.find(a => a.id === avionId);
+  const m = modele(avion.modeleId);
+  const cout = Math.round(m.prix * 0.002 * avion.usure); // 0,2 % du prix neuf par point d'usure
+  if (cout <= 0) { alert("Cet avion est déjà comme neuf."); return; }
+  if (etat.argent < cout) { alert("Réparation trop chère : " + euros(cout) + "."); return; }
+  etat.argent -= cout;
+  avion.usure = 0;
+  noter("Révision complète du " + avion.nom + " pour " + euros(cout) + ".");
+  toutAfficher();
+}
+
+/* ---- SAUVEGARDE (dans le navigateur, via localStorage) ---- */
+
+function sauvegarder() {
+  try {
+    localStorage.setItem(CLE_SAUVEGARDE, JSON.stringify(etat));
+    noter("Partie sauvegardée.", "bon");
+  } catch (e) {
+    alert("Impossible de sauvegarder (stockage du navigateur indisponible).");
+  }
+  toutAfficher();
+}
+
+function charger() {
+  let donnees = null;
+  try { donnees = localStorage.getItem(CLE_SAUVEGARDE); } catch (e) {}
+  if (!donnees) { alert("Aucune sauvegarde trouvée."); return; }
+  etat = JSON.parse(donnees);
+  noter("Partie chargée.");
+  toutAfficher();
+}
+
+function nouvellePartie() {
+  if (!confirm("Recommencer une nouvelle partie ? La progression actuelle non sauvegardée sera perdue.")) return;
+  etat = etatInitial();
+  noter("Nouvelle partie lancée. Bonne chance !");
+  toutAfficher();
+}
+
 /* Fermer une ligne (et libérer son avion). */
 function fermerLigne(ligneId) {
   const ligne = etat.lignes.find(l => l.id === ligneId);
@@ -252,11 +434,22 @@ function passerJour() {
   let passagersTotal = 0;
   let placesVides = 0;    // sert à ajuster la réputation
 
+  // Combien d'avions peuvent voler aujourd'hui (limité par les portes de
+  // l'aéroport ET le nombre d'équipages). Les avions en trop restent au sol.
+  const capacite = capaciteOperationnelle();
+  const facteurEntretien = facteurMecano();   // les mécanos allègent les coûts
+  let avionsEnVol = 0;
+  let avionsCloues = 0;
+
   // --- On traite chaque ligne ---
   for (const ligne of etat.lignes) {
     // Pas d'avion = la ligne ne tourne pas, mais on n'oublie pas que
     // les avions au sol coûtent quand même leur entretien (plus bas).
     if (ligne.avionId === null) continue;
+
+    // Si on a déjà atteint la capacité, cet avion reste cloué au sol.
+    if (avionsEnVol >= capacite) { avionsCloues++; continue; }
+    avionsEnVol++;
 
     const avion = etat.flotte.find(a => a.id === ligne.avionId);
     const m = modele(avion.modeleId);
@@ -282,20 +475,29 @@ function passerJour() {
     const surcoutUsure = m.maintenance * (avion.usure / 100);
 
     recettes += recetteLigne;
-    depenses += carburant + surcoutUsure;
+    depenses += (carburant + surcoutUsure) * facteurEntretien;
 
-    // L'avion s'use à force de voler.
-    avion.usure = Math.min(100, avion.usure + rotations * 0.6);
+    // L'avion s'use à force de voler (les mécanos ralentissent l'usure).
+    avion.usure = Math.min(100, avion.usure + rotations * 0.6 * facteurEntretien);
   }
 
   // --- Entretien de base de TOUS les avions (même ceux au sol) ---
   for (const avion of etat.flotte) {
-    depenses += modele(avion.modeleId).maintenance;
+    depenses += modele(avion.modeleId).maintenance * facteurEntretien;
   }
+
+  // --- Coûts fixes : salaires + fonctionnement aéroport + intérêts dette ---
+  const fixes = coutsFixesJournaliers();
+  depenses += fixes.total;
 
   // --- Mise à jour de l'argent ---
   const benefice = recettes - depenses;
   etat.argent += benefice;
+
+  // Message si des avions n'ont pas pu décoller faute de capacité.
+  if (avionsCloues > 0) {
+    noter("⚠️ " + avionsCloues + " avion(s) cloué(s) au sol : agrandis l'aéroport ou embauche des pilotes.", "mauvais");
+  }
 
   // --- Mise à jour de la réputation ---
   // Beaucoup de places vides => clients déçus de voir des vols à moitié
@@ -319,9 +521,14 @@ function passerJour() {
   }
 
   // On retient le bilan pour l'afficher sur le tableau de bord.
-  etat.dernierBilan = { recettes, depenses, benefice, passagersTotal };
+  etat.dernierBilan = { recettes, depenses, benefice, passagersTotal, fixes };
 
   etat.jour++;
+
+  // Sauvegarde automatique à la fin de chaque journée. On l'entoure d'un
+  // "try" : si le navigateur interdit le stockage local, le jeu continue.
+  try { localStorage.setItem(CLE_SAUVEGARDE, JSON.stringify(etat)); } catch (e) {}
+
   toutAfficher();
 }
 
@@ -346,11 +553,12 @@ function afficherBarreHaut() {
 
 /* Tableau de bord : quelques grandes cartes + le bilan du jour. */
 function afficherTableau() {
-  const avionsLibres = etat.flotte.filter(a => a.ligneId === null).length;
   const cartes = [
     { titre: "Trésorerie", valeur: euros(etat.argent) },
-    { titre: "Lignes ouvertes", valeur: etat.lignes.length },
-    { titre: "Avions", valeur: etat.flotte.length + " (" + avionsLibres + " au sol)" },
+    { titre: "Dette", valeur: euros(etat.dette) },
+    { titre: "Aéroport", valeur: aeroportActuel().nom + " (" + aeroportActuel().portes + " portes)" },
+    { titre: "Capacité de vol", valeur: capaciteOperationnelle() + " avions/jour" },
+    { titre: "Avions / Lignes", valeur: etat.flotte.length + " / " + etat.lignes.length },
     { titre: "Réputation", valeur: Math.round(etat.reputation) + " / 100" },
   ];
   $("resume-cartes").innerHTML = cartes.map(c => `
@@ -364,10 +572,69 @@ function afficherTableau() {
     const classe = b.benefice >= 0 ? "positif" : "negatif";
     $("resume-journee").innerHTML = `
       <div class="stat"><span>Passagers transportés</span><span>${b.passagersTotal.toLocaleString("fr-FR")}</span></div>
-      <div class="stat"><span>Recettes</span><span class="positif">${euros(b.recettes)}</span></div>
-      <div class="stat"><span>Dépenses</span><span class="negatif">${euros(b.depenses)}</span></div>
+      <div class="stat"><span>Recettes (billets)</span><span class="positif">${euros(b.recettes)}</span></div>
+      <div class="stat"><span>Dépenses totales</span><span class="negatif">${euros(b.depenses)}</span></div>
+      <div class="stat" style="padding-left:16px;color:#6b7a8d"><span>↳ dont salaires</span><span>${euros(b.fixes.salaires)}</span></div>
+      <div class="stat" style="padding-left:16px;color:#6b7a8d"><span>↳ dont aéroport</span><span>${euros(b.fixes.aeroport)}</span></div>
+      <div class="stat" style="padding-left:16px;color:#6b7a8d"><span>↳ dont intérêts dette</span><span>${euros(b.fixes.interets)}</span></div>
       <div class="stat"><span>Bénéfice du jour</span><span class="${classe}">${euros(b.benefice)}</span></div>`;
   }
+}
+
+/* La page « Finances » : banque + aéroport. */
+function afficherFinances() {
+  const fixes = coutsFixesJournaliers();
+  $("resume-banque").innerHTML = `
+    <div class="stat"><span>Dette actuelle</span><span>${euros(etat.dette)}</span></div>
+    <div class="stat"><span>Intérêts prélevés / jour</span><span class="negatif">${euros(fixes.interets)}</span></div>
+    <div class="stat"><span>Plafond d'emprunt</span><span>${euros(DETTE_MAX)}</span></div>`;
+
+  const actuel = aeroportActuel();
+  const suivant = AEROPORT_NIVEAUX[etat.aeroport.niveau]; // peut être undefined si max
+  let blocSuivant;
+  if (suivant) {
+    const assez = etat.argent >= suivant.prixAmelioration;
+    blocSuivant = `
+      <div class="stat"><span>Niveau suivant</span><span>${suivant.nom} (${suivant.portes} portes)</span></div>
+      <div class="stat"><span>Coût d'agrandissement</span><span>${euros(suivant.prixAmelioration)}</span></div>
+      <div class="stat"><span>Frais de fonctionnement</span><span>${euros(suivant.coutJournalier)}/jour</span></div>
+      <button class="bouton-principal" ${assez ? "" : "disabled"} onclick="ameliorerAeroport()">Agrandir l'aéroport</button>`;
+  } else {
+    blocSuivant = `<p class="positif">Aéroport au niveau maximum 🎉</p>`;
+  }
+  $("resume-aeroport").innerHTML = `
+    <div class="stat"><span>Niveau actuel</span><span>${actuel.nom}</span></div>
+    <div class="stat"><span>Portes (avions simultanés)</span><span>${actuel.portes}</span></div>
+    <div class="stat"><span>Frais de fonctionnement</span><span>${euros(actuel.coutJournalier)}/jour</span></div>
+    <hr style="border:none;border-top:1px solid #e2e8f2;margin:10px 0">
+    ${blocSuivant}`;
+}
+
+/* La page « Personnel » : une carte par métier. */
+function afficherPersonnel() {
+  const equipagesDispo = Math.floor(etat.personnel.pilotes / EQUIPAGE_PAR_AVION);
+  const metiers = [
+    { cle: "pilotes",     nom: "Pilotes",           emoji: "👨‍✈️",
+      effet: `${EQUIPAGE_PAR_AVION} pilotes = 1 avion en service. Équipages dispo : <strong>${equipagesDispo}</strong>.`,
+      salaire: SALAIRES.pilote },
+    { cle: "mecaniciens", nom: "Mécaniciens",       emoji: "🔧",
+      effet: `Réduisent l'usure et l'entretien. Réduction actuelle : <strong>${Math.round((1 - facteurMecano()) * 100)}%</strong>.`,
+      salaire: SALAIRES.mecanicien },
+    { cle: "agents",      nom: "Agents au sol",     emoji: "🧳",
+      effet: `Améliorent l'accueil et captent plus de voyageurs : <strong>+${Math.round((facteurServiceSol() - 1) * 100)}%</strong>.`,
+      salaire: SALAIRES.agent },
+  ];
+  $("liste-personnel").innerHTML = metiers.map(m => `
+    <div class="carte">
+      <h3>${m.emoji} ${m.nom}</h3>
+      <div class="grande-valeur">${etat.personnel[m.cle]}</div>
+      <p class="aide">${m.effet}</p>
+      <div class="stat"><span>Salaire</span><span>${euros(m.salaire)}/jour chacun</span></div>
+      <div class="formulaire" style="margin-top:8px">
+        <button class="bouton-secondaire" onclick="embaucher('${m.cle}')">+ Embaucher</button>
+        <button class="bouton-secondaire bouton-danger" onclick="licencier('${m.cle}')">− Licencier</button>
+      </div>
+    </div>`).join("");
 }
 
 /* La page « Marché » : une carte par modèle achetable. */
@@ -395,6 +662,7 @@ function afficherFlotte() {
     const m = modele(a.modeleId);
     const ligne = etat.lignes.find(l => l.id === a.ligneId);
     const affecte = ligne ? (ligne.villeA + " ⇄ " + ligne.villeB) : "Au sol";
+    const coutRepa = Math.round(m.prix * 0.002 * a.usure);
     return `
       <div class="carte">
         <h4>${a.nom}</h4>
@@ -403,6 +671,8 @@ function afficherFlotte() {
         <div class="stat"><span>Usure</span><span>${Math.round(a.usure)}%</span></div>
         <div class="barre-fond"><div class="barre-remplie" style="width:${a.usure}%;
              background:${a.usure > 70 ? 'var(--rouge)' : a.usure > 40 ? 'var(--jaune)' : 'var(--vert)'}"></div></div>
+        <button class="bouton-secondaire" style="margin-top:10px" ${a.usure < 1 ? "disabled" : ""}
+                onclick="reparerAvion(${a.id})">Réparer (${euros(coutRepa)})</button>
       </div>`;
   }).join("") + `</div>`;
 }
@@ -502,6 +772,8 @@ function toutAfficher() {
   afficherMarche();
   afficherFlotte();
   afficherLignes();
+  afficherFinances();
+  afficherPersonnel();
   afficherJournal();
 }
 
@@ -537,6 +809,13 @@ $("btn-creer-ligne").addEventListener("click", () => {
 /* Quand on change une ville dans le formulaire, on met à jour l'aide. */
 $("select-ville-a").addEventListener("change", afficherLignes);
 $("select-ville-b").addEventListener("change", afficherLignes);
+
+/* Boutons de la page Finances. */
+$("btn-emprunter").addEventListener("click", () => emprunter($("input-montant-banque").value));
+$("btn-rembourser").addEventListener("click", () => rembourser($("input-montant-banque").value));
+$("btn-sauvegarder").addEventListener("click", sauvegarder);
+$("btn-charger").addEventListener("click", charger);
+$("btn-nouvelle").addEventListener("click", nouvellePartie);
 
 /* On prépare les listes de villes puis on dessine tout une première fois. */
 remplirSelectsVilles();

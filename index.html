@@ -35,6 +35,8 @@
     <button class="onglet" data-cible="page-lignes">🗺️ Lignes</button>
     <button class="onglet" data-cible="page-flotte">🛩️ Flotte</button>
     <button class="onglet" data-cible="page-marche">🏪 Marché des avions</button>
+    <button class="onglet" data-cible="page-finances">🏦 Finances</button>
+    <button class="onglet" data-cible="page-personnel">👷 Personnel</button>
     <button class="onglet" data-cible="page-journal">📜 Journal</button>
   </nav>
 
@@ -85,7 +87,47 @@
       <div id="liste-marche" class="grille-cartes"></div>
     </section>
 
-    <!-- Page 5 : l'historique des événements -->
+    <!-- Page : Finances (banque + agrandissement de l'aéroport + sauvegarde) -->
+    <section id="page-finances" class="page">
+      <h2>🏦 Finances</h2>
+
+      <div class="encart">
+        <h3>Banque</h3>
+        <p class="aide">Emprunte pour investir, mais attention : la dette génère des intérêts chaque jour.</p>
+        <div id="resume-banque"></div>
+        <div class="formulaire">
+          <label>Montant (€)
+            <input type="number" id="input-montant-banque" value="1000000" min="100000" step="100000" />
+          </label>
+          <button id="btn-emprunter" class="bouton-principal">Emprunter</button>
+          <button id="btn-rembourser" class="bouton-secondaire">Rembourser</button>
+        </div>
+      </div>
+
+      <div class="encart">
+        <h3>Aéroport</h3>
+        <div id="resume-aeroport"></div>
+      </div>
+
+      <div class="encart">
+        <h3>Partie</h3>
+        <p class="aide">La partie se sauvegarde toute seule à chaque fin de journée.</p>
+        <div class="formulaire">
+          <button id="btn-sauvegarder" class="bouton-secondaire">💾 Sauvegarder</button>
+          <button id="btn-charger" class="bouton-secondaire">📂 Charger</button>
+          <button id="btn-nouvelle" class="bouton-secondaire bouton-danger">🔄 Nouvelle partie</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Page : Personnel (embaucher / licencier) -->
+    <section id="page-personnel" class="page">
+      <h2>👷 Personnel</h2>
+      <p class="aide">Le salaire de chaque employé est prélevé chaque jour. Trouve le bon équilibre !</p>
+      <div id="liste-personnel" class="grille-cartes"></div>
+    </section>
+
+    <!-- Page : l'historique des événements -->
     <section id="page-journal" class="page">
       <h2>📜 Journal de bord</h2>
       <div id="liste-journal"></div>
